@@ -891,7 +891,17 @@ def _plot_topomap(data, pos, vmin=None, vmax=None, cmap=None, sensors=True,
         _plot_sensors(pos_x, pos_y, sensors=sensors, ax=ax)
     elif sensors and mask is not None:
         idx = np.where(mask)[0]
-        ax.plot(pos_x[idx], pos_y[idx], **mask_params)
+        if hasattr(mask_params['markerfacecolor'], '__iter__'):
+            if len(mask_params['markerfacecolor']) != len(idx):
+                raise ValueError(f"The length of the markerfacecolor param does not match the number"
+                                 " of significant electrodes: {len(mask_params['markerfacecolor'])} and {len(idx)}")
+            else:
+                for i, col in zip(idx, mask_params['markerfacecolor']):
+                    mask_params_col = mask_params.copy()
+                    mask_params_col['markerfacecolor'] = col
+                    ax.plot(pos_x[i], pos_y[i], **mask_params_col)
+        else:
+            ax.plot(pos_x[idx], pos_y[idx], **mask_params)
         idx = np.where(~mask)[0]
         _plot_sensors(pos_x[idx], pos_y[idx], sensors=sensors, ax=ax)
     elif not sensors and mask is not None:
