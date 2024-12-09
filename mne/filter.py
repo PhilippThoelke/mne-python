@@ -180,7 +180,7 @@ def _overlap_add_filter(x, h, n_fft=None, phase='zero', picks=None,
             # cost function based on number of multiplications
             N = 2 ** np.arange(np.ceil(np.log2(min_fft)),
                                np.ceil(np.log2(max_fft)) + 1, dtype=int)
-            cost = (np.ceil(n_x / (N - len(h) + 1).astype(np.float)) *
+            cost = (np.ceil(n_x / (N - len(h) + 1).astype(float)) *
                     N * (np.log2(N) + 1))
 
             # add a heuristic term to prevent too-long FFT's which are slow
