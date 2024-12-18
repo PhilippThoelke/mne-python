@@ -620,7 +620,7 @@ def _plot_sensors(pos_x, pos_y, sensors, ax):
     """Plot sensors."""
     if sensors is True:
         ax.scatter(pos_x, pos_y, s=0.25, marker='o',
-                   edgecolor=['k'] * len(pos_x), facecolor='none')
+                   edgecolor=['k'] * len(pos_x), facecolor='none', zorder=3)
     else:
         ax.plot(pos_x, pos_y, sensors)
 
@@ -732,6 +732,55 @@ def plot_topomap(data, pos, vmin=None, vmax=None, cmap=None, sensors=True,
                          names, show_names, mask, mask_params, outlines,
                          contours, image_interp, show,
                          head_pos, onselect, extrapolate)[:2]
+
+
+from scipy.spatial import Voronoi
+_VORONOI_CIRCLE_RES = 100
+
+
+def _voronoi_topomap(data, pos, outlines, ax, cmap, norm, extent, res):
+    """Make a Voronoi diagram on a topomap."""
+    # we need an image axis object so first empty image to plot over
+    im = ax.imshow(
+        np.zeros((res, res)) * np.nan,
+        cmap=cmap,
+        origin="lower",
+        aspect="equal",
+        extent=extent,
+        norm=norm,
+    )
+    rx, ry = outlines["clip_radius"]
+    cx, cy = outlines.get("clip_origin", (0.0, 0.0))
+    # add points on the circle to make boundaries, expand out to
+    # ensure regions extend to the edge of the topomap
+    vor = Voronoi(
+        np.concatenate(
+            [
+                pos,
+                [
+                    (
+                        rx * 1.5 * np.cos(2 * np.pi / _VORONOI_CIRCLE_RES * t),
+                        ry * 1.5 * np.sin(2 * np.pi / _VORONOI_CIRCLE_RES * t),
+                    )
+                    for t in range(_VORONOI_CIRCLE_RES)
+                ],
+            ]
+        )
+    )
+    for point_idx, region_idx in enumerate(vor.point_region[:-_VORONOI_CIRCLE_RES]):
+        if -1 in vor.regions[region_idx]:
+            continue
+        polygon = list()
+        for i in vor.regions[region_idx]:
+            x, y = vor.vertices[i]
+            if (x - cx) ** 2 / rx**2 + (y - cy) ** 2 / ry**2 < 1:
+                polygon.append((x, y))
+            else:
+                x *= rx / np.linalg.norm(vor.vertices[i])
+                y *= ry / np.linalg.norm(vor.vertices[i])
+                polygon.append((x, y))
+        ax.fill(*zip(*polygon), color=cmap(norm(data[point_idx])))
+    return im
 
 
 def _plot_topomap(data, pos, vmin=None, vmax=None, cmap=None, sensors=True,
@@ -856,9 +905,20 @@ def _plot_topomap(data, pos, vmin=None, vmax=None, cmap=None, sensors=True,
                                  transform=ax.transData)
 
     # plot interpolated map
-    im = ax.imshow(Zi, cmap=cmap, vmin=vmin, vmax=vmax, origin='lower',
-                   aspect='equal', extent=(xmin, xmax, ymin, ymax),
-                   interpolation=image_interp)
+    if image_interp == "nearest":
+        cnorm = norm
+        if cnorm:
+            from matplotlib.colors import Normalize
+
+            cnorm = Normalize(vmin=vmin, vmax=vmax)
+        ccmap = cmap
+        if isinstance(ccmap, str):
+            ccmap = plt.get_cmap(ccmap)
+        im = _voronoi_topomap(data, pos, outlines, ax, ccmap, cnorm, (xmin, xmax, ymin, ymax), res)
+    else:
+        im = ax.imshow(Zi, cmap=cmap, vmin=vmin, vmax=vmax, origin='lower',
+                        aspect='equal', extent=(xmin, xmax, ymin, ymax),
+                        interpolation=image_interp)
 
     # This tackles an incomprehensible matplotlib bug if no contours are
     # drawn. To avoid rescalings, we will always draw contours.
